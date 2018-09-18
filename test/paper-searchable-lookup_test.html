@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, minimum-scale=1, initial-scale=1, user-scalable=yes">
+
+    <title>paper-searchable-lookup test</title>
+
+    <script src="../../webcomponentsjs/webcomponents-lite.js"></script>
+    <script src="../../web-component-tester/browser.js"></script>
+
+    <link rel="import" href="../paper-searchable-lookup.html">
+  </head>
+  <body>
+
+    <test-fixture id="BasicTestFixture">
+      <template>
+        <paper-searchable-lookup></paper-searchable-lookup>
+      </template>
+    </test-fixture>
+
+    <test-fixture id="ChangedPropertyTestFixture">
+      <template>
+        <paper-searchable-lookup lookup-values='["abc", "def"]'></paper-searchable-lookup>
+      </template>
+    </test-fixture>
+
+    <script>
+      suite('paper-searchable-lookup', function() {
+
+        test('instantiating the element with default properties works', function() {
+          var element = fixture('BasicTestFixture');
+          expect(element.lookupValues).to.deep.equal([]);
+        });
+
+        test('setting a property on the element works', function() {
+          var element = fixture('ChangedPropertyTestFixture');
+          expect(element.lookupValues).to.deep.equal(["abc", "def"]);
+        });
+
+      });
+    </script>
+
+  </body>
+</html>

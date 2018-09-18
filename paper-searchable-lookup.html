@@ -1,0 +1,628 @@
+<link rel="import" href="../polymer/polymer-element.html">
+<link rel="import" href="../polymer/lib/mixins/gesture-event-listeners.html">
+<link rel="import" href="../iron-icon/iron-icon.html">
+<link rel="import" href="../iron-icons/iron-icons.html">
+<link rel="import" href="../iron-list/iron-list.html">
+<link rel="import" href="../paper-input/paper-input.html">
+<link rel="import" href="../paper-styles/default-theme.html">
+<link rel="import" href="../paper-icon-button/paper-icon-button.html">
+<link rel="import" href="../iron-validatable-behavior/iron-validatable-behavior.html">
+
+<dom-module id="paper-searchable-lookup">
+    <template>
+        <style>
+            :host {
+                display: block;
+            }
+
+            :host[hidden] {
+                display: none !important;
+            }
+
+            input {
+                text-transform: lowercase;
+                height: 36px;
+                width: auto !important;
+                padding-left: 0.5em;
+            }
+
+            iron-icon {
+                --iron-icon-height: 18px;
+                --iron-icon-width: 20px;
+                color: var(--disabled-text-color);
+            }
+
+            paper-icon-button {
+                position: absolute;
+                width: 20px;
+                height: 20px;
+                padding: 0px;
+                margin-bottom: 10px;
+                float: right;
+                color: black;
+            }
+
+            paper-input {
+                display: inline-block;
+                width: 100%;
+            }
+
+            #searchableLookup {
+                right: 20px;
+                top: 18px;
+            }
+
+            #expandButton {
+                right: 0px;
+                top: 25px;
+            }
+
+            #clearButton {
+                right: 20px;
+                top: 25px;
+            }
+
+            #scrollableElement {
+                overflow: hidden;
+                text-overflow: ellipsis;
+                white-space: nowrap;
+                position: absolute;
+                left: 0;
+                right: 0;
+                box-shadow: 3px 3px 3px #e0e0e0;
+                cursor: pointer;
+                max-height: 200px;
+                z-index: 1000;
+            }
+
+            iron-list {
+                --iron-list-items-container: {
+                    margin: auto;
+                }
+            }
+
+            .container {
+                width: 100%;
+                position: relative;
+                display: inline-block;
+                padding-bottom: var(--my-paper-searchable-lookup-padding-bottom, 1.125em);
+            }
+        </style>
+        <div class="container">
+            <paper-input is="iron-input" label="[[label]]" id="searchableLookup" value="[[_getTagDisplayText(value, lookupValues.*, _isObjectBound, displayValue)]]"
+                placeholder="[[placeholder]]" on-keydown="_onInputKeydown" required="{{required}}" auto-validate="{{autoValidate}}"
+                error-message="{{errorMessage}}" maxlength="{{maxlength}}" minlength="{{minlength}}" pattern="{{pattern}}" allowed-pattern="{{allowedPattern}}"
+                validator="{{validator}}" invalid="{{invalid}}">
+            </paper-input>
+            <paper-icon-button id="expandButton" icon="arrow-drop-down" on-tap="_showAll" on-focused-changed="_focusedChanged"></paper-icon-button>
+            <paper-icon-button id="clearButton" icon="clear" on-tap="_clearValue"></paper-icon-button>
+
+            <div id="scrollableElement" style="overflow: auto;">
+                <iron-list id="lookupList" scroll-target="scrollableElement" items="[[_matchedLookupValues]]" selected-items="{{selectedItems}}"
+                    selection-enabled as="item">
+                    <template>
+                        <div tabindex$="[[tabIndex]]" style$="background-color:[[_computeBackgroundColor(index, focusedIndex, selected)]];" id="[[_getItemValue(item)]]">
+                            [[_getItemDisplayText(item)]]
+                        </div>
+                    </template>
+                </iron-list>
+            </div>
+        </div>
+    </template>
+
+    <script>
+
+        class PaperSearchableLookup extends Polymer.mixinBehaviors([Polymer.IronValidatableBehavior], Polymer.GestureEventListeners(Polymer.Element)) {
+            static get is() {
+                return 'paper-searchable-lookup';
+            }
+
+            static get observers() {
+                return []
+            }
+
+            static get properties() {
+                return {
+                    required: {
+                        type: Boolean,
+                        value: false
+                    },
+
+                    invalid: {
+                        type: Boolean,
+                        value: false
+                    },
+
+                    errorMessage: {
+                        type: String,
+                        value: ""
+                    },
+
+                    value: {
+                        type: Object,
+                        notify: true,
+                        observer: '_valueChanged'
+                    },
+
+                    displayValue: {
+                        type: String,
+                        observer: '_displayValueChanged'
+                    },
+
+                    multipleValuesPerKey: {
+                        type: Boolean
+                    },
+
+                    label: {
+                        type: String,
+                        notify: true
+                    },
+
+                    placeholder: {
+                        type: String,
+                        notify: true
+                    },
+
+                    lookupValues: {
+                        type: Array,
+                        notify: true,
+                        value: [],
+                        observer: '_lookupValuesChanged'
+                    },
+
+                    _matchedLookupValues: {
+                        type: Array,
+                        notify: true,
+                        observer: '_matchedLookupValuesChanged'
+                    },
+
+                    limitToLookupValues: {
+                        type: Boolean
+                    },
+
+                    limitToResults: {
+                        type: Number,
+                        value: 0
+                    },
+
+                    _searchString: {
+                        type: String,
+                        notify: true,
+                        observer: '_searchStringChanged'
+                    },
+
+                    _matchString: {
+                        type: String
+                    },
+
+                    selectedItems: {
+                        type: Object,
+                        notify: true,
+                        observer: '_selectedItemChanged'
+                    },
+
+                    startSearchOnCharacterNo: {
+                        type: Number,
+                        notify: true,
+                        value: 3
+                    },
+
+                    selectedColor: {
+                        type: String,
+                        notify: true,
+                        value: 'DodgerBlue'
+                    },
+
+                    focusedColor: {
+                        type: String,
+                        notify: true,
+                        value: 'GhostWhite'
+                    },
+
+                    valueField: {
+                        type: String
+                    },
+
+                    displayField: {
+                        type: String
+                    },
+
+                    _isObjectBound: {
+                        type: Boolean,
+                        value: true
+                    },
+
+                    required: {
+                        type: Boolean,
+                        reflectToAttribute: true
+                    },
+
+                    autoValidate: {
+                        type: Boolean,
+                        reflectToAttribute: true
+                    },
+
+                    errorMessage: {
+                        type: String,
+                        reflectToAttribute: true
+                    },
+
+                    maxlength: {
+                        type: Number,
+                        reflectToAttribute: true
+                    },
+
+                    minlength: {
+                        type: Number,
+                        reflectToAttribute: true
+                    },
+
+                    pattern: {
+                        type: String,
+                        reflectToAttribute: true
+                    },
+
+                    allowedPattern: {
+                        type: String,
+                        reflectToAttribute: true
+                    },
+
+                    validator: {
+                        type: String,
+                        reflectToAttribute: true
+                    },
+
+                    invalid: {
+                        type: Boolean,
+                        reflectToAttribute: true
+                    },
+
+                    customItemLabel: {
+                        type: String
+                    }
+                };
+            }
+
+            validate() {
+                if (this.required && (this.value === "" || this.value === null)) {
+                    this.invalid = true;
+                    return;
+                }
+                return this.$.searchableLookup.validate();
+            }
+
+            add(item) {
+                var displayText;
+                if (this._isObjectBound === false || typeof item === 'string') {
+                    displayText = item;
+                } else {
+                    displayText = item[this.displayField];
+                }
+
+                var trimmedTag = displayText.replace(/^\s+/, '').replace(/\s+$/, '');
+                if (trimmedTag !== '') {
+
+                    var lookupIndex;
+                    if (this.limitToLookupValues === true) {
+                        if (this.lookupValues != null) {
+                            if (this._isObjectBound === false) {
+                                lookupIndex = this.lookupValues.indexOf(trimmedTag);
+                            } else {
+                                lookupIndex = this._findWithAttr(this.lookupValues,
+                                    this.displayField,
+                                    trimmedTag);
+                            }
+
+                            if (lookupIndex === -1) {
+                                return;
+                            }
+                        }
+                    }
+
+                    var selectedValue;
+
+                    if (this._isObjectBound === true) {
+                        if (this.valueField != null && this.valueField !== '') {
+                            selectedValue = this.lookupValues[lookupIndex][this.valueField];
+                        } else if (this.displayField != null && this.displayField !== '') {
+                            selectedValue = this.lookupValues[lookupIndex][this.displayField];
+                        } else {
+                            selectedValue = this.lookupValues[lookupIndex][0];
+                        }
+
+                    } else {
+                        selectedValue = trimmedTag;
+                    }
+
+                    if (this.multipleValuesPerKey === true) {
+                        this.displayValue = displayText;
+                    }
+
+                    this.value = selectedValue;
+                }
+                this._matchedLookupValues = [];
+            }
+
+            _clearValue() {
+                this.value = null;
+                this.$.searchableLookup.value = null;
+                this.$.searchableLookup.focus();
+            }
+
+            _showAll(e) {
+                e.preventDefault();
+                if (this._matchedLookupValues === undefined || this._matchedLookupValues === null || this._matchedLookupValues.length === 0) {
+                    if (this.limitToResults > 0) {
+                        this.set('_matchedLookupValues', this.lookupValues.slice(0, this.limitToResults));
+                    } else {
+                        this.set('_matchedLookupValues', this.lookupValues)
+                    }
+                    if (this.customItemLabel != undefined && this.customItemLabel.length > 0)
+                        if (this._matchedLookupValues[this._matchedLookupValues.length - 1] !== this.customItemLabel)
+                            this.push('_matchedLookupValues', this.customItemLabel);
+                } else {
+                    this._matchedLookupValues = [];
+                }
+            }
+
+            _onInputKeydown(e) {
+                if (e.keyCode === 9 || e.keyCode === 13) {
+                    this._matchedLookupValues = [];
+                    return;
+                } else if (e.keyCode === 40) {
+                    if (this._matchedLookupValues != null && this._matchedLookupValues.length > 0) {
+                        this._focusDropdown(e);
+                    }
+                } else {
+                    var inp = e.keyCode >= 96 && e.keyCode <= 105 ? String.fromCharCode(e.keyCode - 48) : String.fromCharCode(e.keyCode);
+                    var src;
+                    if (e.target.value != null) {
+                        src = e.target.value;
+                    }
+
+                    if (/[a-zA-Z0-9-_ ]/.test(inp)) {
+                        if (src != null) {
+                            src += inp;
+                        } else {
+                            src = inp;
+                        }
+                    }
+                    this._notifyInputChanged(src);
+                }
+            }
+
+            _notifyInputChanged(inputString) {
+                if (inputString != null) {
+                    if (inputString.length < this.startSearchOnCharacterNo) {
+                        inputString = '';
+                    }
+                    if (inputString.indexOf(this._searchString) !== -1) {
+                        var event = new CustomEvent('input-changed', {
+                            bubbles: true,
+                            composed: true,
+                            defaultPrevented: true,
+                            detail: {
+                                input: inputString
+                            }
+                        });
+                        this.dispatchEvent(event);
+                    }
+                }
+                this._searchString = inputString;
+            }
+
+            _updateMatchedItems(searchString) {
+                this._matchString = searchString.toLowerCase();
+                this._matchedLookupValues = [];
+                if (searchString != '') {
+
+                    var results = this.lookupValues.filter(function (obj) {
+                        if (this.displayField != null && this.displayField !== '') {
+                            if (obj[this.displayField] != null) {
+                                return obj[this.displayField].toLowerCase().indexOf(this._matchString) !== -1
+                            } else {
+                                return obj.toLowerCase().indexOf(this._matchString) !== -1
+                            }
+                        } else {
+                            return obj.toLowerCase().indexOf(this._matchString) !== -1
+                        }
+                    }.bind(this));
+
+                    if (this.limitToResults > 0) {
+                        this.set('_matchedLookupValues', results.slice(0, this.limitToResults));
+                    } else {
+                        this.set('_matchedLookupValues', results)
+                    }
+                }
+            }
+
+            _searchStringChanged(newValue, OldValue) {
+                if (newValue != null) {
+                    this._updateMatchedItems(newValue);
+                } else {
+                    this._updateMatchedItems('');
+                }
+            }
+
+            _lookupValuesChanged(newData, oldData) {
+                if (newData != null) {
+                    if (newData.length > 0) {
+                        if (typeof newData[0] === 'string') {
+                            this._isObjectBound = false;
+                            return;
+                        }
+                    }
+
+                    this._isObjectBound = true;
+
+                    if (this.displayField == null) {
+                        if (newData.length > 0) {
+                            if (newData[0].length == null) {
+                                var flatArray = [];
+                                var i;
+                                for (i = 0; i < newData.length; i++) {
+                                    flatArray.push(this._flattenObject(newData[i]));
+                                }
+                                this.lookupValues = flatArray;
+                            }
+                        }
+                    }
+                }
+            }
+
+            _flattenObject(obj) {
+                var objString = '';
+                for (var property in obj) {
+                    if (obj.hasOwnProperty(property)) {
+                        if (objString.length > 0) {
+                            objString += ' ';
+                        }
+                        objString += obj[property];
+                    }
+                }
+
+                return objString;
+            }
+
+            _valueChanged(newValue, oldValue) {
+                var event = new CustomEvent('value-changed', {
+                    bubbles: true,
+                    composed: true,
+                    defaultPrevented: true,
+                    detail: {
+                        value: this.value
+                    }
+                });
+                this.dispatchEvent(event);
+            }
+
+            _displayValueChanged(newValue, oldValue) {
+
+            }
+
+            _matchedLookupValuesChanged(newData, oldData) {
+                if (newData == null) {
+                    this.$.expandButton.icon = "arrow-drop-down";
+                } else if (newData.length === 0) {
+                    this.$.expandButton.icon = "arrow-drop-down";
+                } else {
+                    this.$.expandButton.icon = "arrow-drop-up";
+                }
+            }
+
+            _focusDropdown(e) {
+                this.$.lookupList._physicalItems[0].focus();
+            }
+
+            _focusedChanged(e) {
+                if (!e.detail.value && this.$.expandButton.icon == "arrow-drop-up") {
+                    setTimeout(function () {
+                        if ((this.shadowRoot.activeElement && this.shadowRoot.activeElement.parentElement.id != "lookupList" && this.shadowRoot.activeElement.id != "searchableLookup") || this.shadowRoot.activeElement === null)
+                            this._matchedLookupValues = [];
+                    }.bind(this), 0);
+                }
+            }
+
+            _selectedItemChanged(newValue, oldValue) {
+                if (newValue != null) {
+                    if (newValue === this.customItemLabel) {
+                        var event = new CustomEvent('custom-item-selected', {
+                            bubbles: true,
+                            composed: true,
+                            detail: {
+                                value: newValue
+                            }
+                        });
+
+                        this.add(newValue);
+                        this._searchString = null;
+                        this.$.searchableLookup.focus();
+
+                        this.dispatchEvent(event);
+                    }
+                    else {
+                        this.add(newValue)
+                        this._searchString = null;
+                        this.$.searchableLookup.focus();
+                    }
+                }
+            }
+
+            _computeBackgroundColor(index, focusedIndex, selected) {
+                if (selected) return this.selectedColor;
+                if (index == focusedIndex) return this.focusedColor;
+                return 'white';
+            }
+
+            _getItemValue(item) {
+                if (typeof item !== 'string') {
+                    return item[this.valueField];
+                }
+                return item;
+            }
+
+            _getItemDisplayText(item) {
+                if (this.displayField != null && this.displayField !== '') {
+                    if (item[this.displayField] != null) {
+                        return item[this.displayField];
+                    }
+                }
+                return item;
+            }
+
+            _getTagDisplayText(item, lookupValues, isObjectBound, displayValue) {
+                if (isObjectBound === true) {
+                    if (lookupValues != null) {
+                        var fieldIndex;
+                        var valueField;
+
+                        if (this.multipleValuesPerKey === true) {
+                            if (displayValue != null) {
+                                if (displayValue != "") {
+                                    return displayValue;
+                                }
+                            }
+                        }
+
+                        if (lookupValues.base != null) {
+                            lookupValues = lookupValues.base;
+                        }
+
+                        if (this.valueField !== '') {
+                            valueField = this.valueField
+                        } else if (this.displayField != null && this.displayField !== '') {
+                            valueField = this.displayField
+                        } else {
+                            valueField = Object.keys(lookupValues)[0];
+                        }
+
+                        fieldIndex = this._findWithAttr(lookupValues, valueField, item)
+                        if (fieldIndex !== -1) {
+                            if (this.displayField != null && this.displayField !== '') {
+                                this.displayValue = lookupValues[fieldIndex][this.displayField];
+                                return lookupValues[fieldIndex][this.displayField];
+                            } else {
+                                this.displayValue = lookupValues[fieldIndex][0];
+                                return lookupValues[fieldIndex][0];
+                            }
+                        }
+                    }
+                }
+                this.displayValue = item;
+                return item;
+            }
+
+            _findWithAttr(array, attr, value) {
+
+                for (var i = 0; i < array.length; i += 1) {
+                    if (array[i][attr] == value) {
+                        return i;
+                    }
+                }
+                return -1;
+            }
+        }
+
+        window.customElements.define(PaperSearchableLookup.is, PaperSearchableLookup);
+    </script>
+</dom-module>
