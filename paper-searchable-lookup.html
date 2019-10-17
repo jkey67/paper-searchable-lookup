@@ -507,6 +507,9 @@
                     this.$.expandButton.icon = "arrow-drop-down";
                 } else {
                     this.$.expandButton.icon = "arrow-drop-up";
+                    this.async(() => {
+                        this.fire('list-displayed');
+                    }, 10);
                 }
             }
 
